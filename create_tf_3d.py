@@ -15,7 +15,7 @@ from tf_agents.utils import example_encoding_dataset
 
 FLAGS = flags.FLAGS
 flags.DEFINE_boolean('make_video', False, 'Skips data generation & produces a video of the oracle instead')
-flags.DEFINE_integer('num_videos', 30, 'Number of videos which are generated, requires --make_video')
+flags.DEFINE_integer('num_videos', 50, 'Number of videos which are generated, requires --make_video')
 flags.DEFINE_integer('num_jobs', 10, 'Number of data generation processes to run in parallel')
 flags.DEFINE_integer('num_episodes', 200, 'Number of episodes to generate per job')
 
