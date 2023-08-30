@@ -11,11 +11,12 @@ from tf_agents.metrics import py_metrics
 from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.trajectories import policy_step
 from tf_agents.utils import example_encoding_dataset
+import pandas as pd
 
 
 FLAGS = flags.FLAGS
 flags.DEFINE_boolean('make_video', False, 'Skips data generation & produces a video of the oracle instead')
-flags.DEFINE_integer('num_videos', 50, 'Number of videos which are generated, requires --make_video')
+flags.DEFINE_integer('num_videos', 5, 'Number of videos which are generated, requires --make_video')
 flags.DEFINE_integer('num_jobs', 10, 'Number of data generation processes to run in parallel')
 flags.DEFINE_integer('num_episodes', 200, 'Number of episodes to generate per job')
 
@@ -26,13 +27,28 @@ class ParticleOracle3D(py_policy.PyPolicy):
         super(ParticleOracle3D, self).__init__(env.time_step_spec(), env.action_spec())
         self._env = env
         self._np_random_state = np.random.RandomState(0)
+        self.coordinates= []
 
         self.goal_threshold = goal_threshold
         self.reset()
 
     def reset(self):
-        pass
+        self.coordinates=[]
 
+    # def _action(self, time_step, policy_state):
+    #     if time_step.is_first():
+    #         self.reset()
+    #
+    #     obs = time_step.observation
+    #
+    #     act = obs['pos_goal'] - obs['pos_agent']
+    #
+    #     # frame_num=10
+    #     # #save x,y,z coordinates into .csv file
+    #     # self.coordinates[frame_num]=obs['pos_agent'].tolist()
+    #
+    #
+    #     return policy_step.PolicyStep(action=act)
     def _action(self, time_step, policy_state):
         if time_step.is_first():
             self.reset()
@@ -41,8 +57,15 @@ class ParticleOracle3D(py_policy.PyPolicy):
 
         act = obs['pos_goal'] - obs['pos_agent']
 
+        # Save x, y, z coordinates for the current frame
+        self.coordinates.append(obs['pos_goal'].tolist())
+
         return policy_step.PolicyStep(action=act)
 
+def save_coordinates_to_csv(coordinates, filename):
+    """Save the (x, y, z) coordinates to a .csv file."""
+    df = pd.DataFrame(coordinates, columns=["x", "y", "z"])
+    df.to_csv(filename, index=False)
 
 def create_episodes(dataset_path, num_episodes):
     """Create training data"""
@@ -67,6 +90,32 @@ def create_episodes(dataset_path, num_episodes):
     env.close()
 
 
+# def create_video():
+#     """Create video of the policy defined by the oracle class."""
+#     from utils import Mp4VideoWrapper
+#
+#     np.random.seed(1)
+#     seeds = np.random.randint(size=FLAGS.num_videos, low=0, high=1000)
+#
+#     for seed in seeds:
+#         env = suite_gym.load('Particle3D-v1')
+#         env.seed(seed)
+#
+#         particle_policy = ParticleOracle3D(env)
+#
+#         video_path = os.path.join('data', 'videos_3d', 'ttl=7d', 'vid_%d.mp4' % seed)
+#         control_frequency = 30
+#
+#         video_env = Mp4VideoWrapper(env, control_frequency, frame_interval=1, video_filepath=video_path)
+#         driver = py_driver.PyDriver(video_env, particle_policy, observers=[], max_episodes=1)
+#
+#         time_step = video_env.reset()
+#
+#         initial_policy_state = particle_policy.get_initial_state(1)
+#         driver.run(time_step, initial_policy_state)
+#         video_env.close()
+#         logging.info('Wrote video for seed %d to %s', seed, video_path)
+
 def create_video():
     """Create video of the policy defined by the oracle class."""
     from utils import Mp4VideoWrapper
@@ -81,6 +130,11 @@ def create_video():
         particle_policy = ParticleOracle3D(env)
 
         video_path = os.path.join('data', 'videos_3d', 'ttl=7d', 'vid_%d.mp4' % seed)
+        csv_path = os.path.join('data', 'coord_3d', 'ttl=7d', 'coordinates_%d.csv' % seed)
+
+        ensure_directory_exists(video_path)
+        ensure_directory_exists(csv_path)
+
         control_frequency = 30
 
         video_env = Mp4VideoWrapper(env, control_frequency, frame_interval=1, video_filepath=video_path)
@@ -90,8 +144,12 @@ def create_video():
 
         initial_policy_state = particle_policy.get_initial_state(1)
         driver.run(time_step, initial_policy_state)
+
+        # Save the coordinates to a .csv file
+        save_coordinates_to_csv(particle_policy.coordinates, csv_path)
+
         video_env.close()
-        logging.info('Wrote video for seed %d to %s', seed, video_path)
+        logging.info('Wrote video for seed %d to %s and coordinates to %s', seed, video_path, csv_path)
 
 # Check and create the directory if it doesn't exist
 def ensure_directory_exists(path):
@@ -114,7 +172,7 @@ def main(_):
         jobs = []
         for i in range(FLAGS.num_jobs):
             dataset_path = dataset_split_path[0] + '_%d' % i + dataset_split_path[1]
-            ensure_directory_exists(dataset_path_i)
+            ensure_directory_exists(dataset_path)
             job = context.Process(target=create_episodes, kwargs={"dataset_path": dataset_path,
                                                                   "num_episodes": FLAGS.num_episodes})
             job.start()
